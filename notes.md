@@ -20,3 +20,5 @@ str.removeprefix replaced with a Python 3.8-compatible equivalent.
 Server sends an auth_fail message before closing so the client knows why the connection dropped.
 Frontend sets authFailed = true on auth_fail and stops retrying — previously a wrong key would hammer the server in a 3-second loop forever.
 Added a try/catch around JSON.parse in onmessage to avoid an unhandled exception breaking the message loop.
+
+Added the parts to implement Docker.

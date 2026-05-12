@@ -1,0 +1,25 @@
+services:
+
+  # ── Python WebSocket server ─────────────────────────────────────────────────
+  sudoku-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Override the default API key here, or leave unset to use "SUDOKUv00"
+      SUDOKU_API_KEY: ${SUDOKU_API_KEY:-SUDOKUv00}
+    # Not exposed to the host — Nginx proxies to it on the internal network
+    expose:
+      - "8765"
+
+  # ── Nginx — serves HTML and proxies /ws to the Python server ───────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    restart: unless-stopped
+    ports:
+      - "88:80"
+    depends_on:
+      - sudoku-server

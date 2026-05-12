@@ -552,7 +552,7 @@ let seconds = 0;
 let gameActive = false;
 
 // ── WebSocket ──────────────────────────────────────────────────────────────────
-const WS_URL = 'ws://localhost:8765';
+const WS_URL = `ws://${location.host}/ws`;
 
 // Set this to match SUDOKU_API_KEY on the server (default: SUDOKUv00).
 const API_KEY = 'SUDOKUv00';
