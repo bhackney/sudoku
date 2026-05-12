@@ -494,16 +494,16 @@
 
 <!-- Numpad -->
 <div class="numpad" id="numpad">
-  <button class="num-btn" onclick="inputNum(1)">1</button>
-  <button class="num-btn" onclick="inputNum(2)">2</button>
-  <button class="num-btn" onclick="inputNum(3)">3</button>
-  <button class="num-btn" onclick="inputNum(4)">4</button>
-  <button class="num-btn" onclick="inputNum(5)">5</button>
-  <button class="num-btn" onclick="inputNum(6)">6</button>
-  <button class="num-btn" onclick="inputNum(7)">7</button>
-  <button class="num-btn" onclick="inputNum(8)">8</button>
-  <button class="num-btn" onclick="inputNum(9)">9</button>
-  <button class="num-btn erase" onclick="inputNum(0)">✕</button>
+  <button class="num-btn" onclick="inputNum(1,event)">1</button>
+  <button class="num-btn" onclick="inputNum(2,event)">2</button>
+  <button class="num-btn" onclick="inputNum(3,event)">3</button>
+  <button class="num-btn" onclick="inputNum(4,event)">4</button>
+  <button class="num-btn" onclick="inputNum(5,event)">5</button>
+  <button class="num-btn" onclick="inputNum(6,event)">6</button>
+  <button class="num-btn" onclick="inputNum(7,event)">7</button>
+  <button class="num-btn" onclick="inputNum(8,event)">8</button>
+  <button class="num-btn" onclick="inputNum(9,event)">9</button>
+  <button class="num-btn erase" onclick="inputNum(0,event)">✕</button>
 </div>
 
 <div class="mode-toggle">
@@ -877,7 +877,12 @@ function clearRelatedNotes(row, col, n) {
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
-function inputNum(n, forceNormal = false) {
+function inputNum(n, evtOrBool = false) {
+  // Accept either a MouseEvent (from on-screen buttons) or a plain boolean
+  // (from the keyboard handler). Shift held → force normal placement mode.
+  const forceNormal = (evtOrBool === true) ||
+                      (evtOrBool && evtOrBool.shiftKey);
+
   if(!selectedCell || !gameActive) return;
   const [r, c] = selectedCell;
   if(statuses[r][c] === 'fixed') return;
