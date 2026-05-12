@@ -3,7 +3,9 @@
 
 import asyncio
 import json
+import os
 import random
+import secrets
 import websockets
 from concurrent.futures import ThreadPoolExecutor
 
@@ -11,6 +13,14 @@ from concurrent.futures import ThreadPoolExecutor
 _executor = ThreadPoolExecutor(max_workers=4)
 
 SOLVER_TIMEOUT = 5.0   # seconds before a solve attempt is aborted
+
+# ── Auth config ────────────────────────────────────────────────────────────────
+# Set SUDOKU_API_KEY in the environment before starting the server.
+# If unset, a random key is generated at startup and printed once.
+_API_KEY = os.environ.get("SUDOKU_API_KEY") or secrets.token_hex(24)
+if "SUDOKU_API_KEY" not in os.environ:
+    print(f"[auth] No SUDOKU_API_KEY set — generated key for this session: {_API_KEY}")
+    print("[auth] Set SUDOKU_API_KEY env var to use a fixed key.")
 
 # ── Sudoku Engine ──────────────────────────────────────────────────────────────
 
@@ -231,6 +241,34 @@ def to_line(board):
 
 async def handler(websocket):
     """Handle a single client connection."""
+
+    # ── 1. API key check ───────────────────────────────────────────────────────
+    # Browsers can't set custom HTTP headers on WebSocket connections, so we
+    # accept the key two ways:
+    #   a) Authorization: Bearer <key>  header (curl / non-browser clients)
+    #   b) Sec-WebSocket-Protocol: bearer.<key>  subprotocol (browser clients)
+    auth_header = websocket.request.headers.get("Authorization", "")
+    provided_key = auth_header.removeprefix("Bearer ").strip()
+
+    if not provided_key:
+        # Try subprotocol: first entry of the form "bearer.<key>"
+        for proto in websocket.request.headers.get("Sec-WebSocket-Protocol", "").split(","):
+            proto = proto.strip()
+            if proto.startswith("bearer."):
+                provided_key = proto[len("bearer."):]
+                break
+
+    if not secrets.compare_digest(provided_key, _API_KEY):
+        await websocket.close(1008, "Unauthorized")
+        return
+
+    # ── 2. Issue a per-connection session token ────────────────────────────────
+    session_token = secrets.token_hex(32)
+    await websocket.send(json.dumps({
+        "type":          "auth_ok",
+        "session_token": session_token,
+    }))
+
     game_state = {
         "puzzle":     None,
         "solution":   None,
@@ -256,6 +294,11 @@ async def handler(websocket):
 
         if not isinstance(msg, dict):
             await send_error("Message must be a JSON object")
+            continue
+
+        # ── 3. Session token check on every message ────────────────────────────
+        if not secrets.compare_digest(msg.get("session_token", ""), session_token):
+            await send_error("Invalid session token")
             continue
 
         action = msg.get("type")

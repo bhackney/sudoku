@@ -554,28 +554,48 @@ let gameActive = false;
 // ── WebSocket ──────────────────────────────────────────────────────────────────
 const WS_URL = 'ws://localhost:8765';
 
+// Set this to the value printed by the server on startup (or your SUDOKU_API_KEY).
+const API_KEY = 'REPLACE_WITH_YOUR_API_KEY';
+
+let sessionToken = null;  // assigned when server sends auth_ok
+
 function connect() {
   updateConn('connecting', 'Connecting…');
   try {
-    ws = new WebSocket(WS_URL);
+    ws = new WebSocket(WS_URL, [], {
+      headers: { 'Authorization': `Bearer ${API_KEY}` }
+    });
   } catch(e) {
-    updateConn('error', 'Connection failed');
-    showToast('Cannot connect to server', 'error-t');
-    return;
+    // Browser WebSocket API doesn't support custom headers directly;
+    // pass key as a subprotocol instead (server reads first subprotocol).
+    try {
+      ws = new WebSocket(WS_URL, [`bearer.${API_KEY}`]);
+    } catch(e2) {
+      updateConn('error', 'Connection failed');
+      showToast('Cannot connect to server', 'error-t');
+      return;
+    }
   }
 
   ws.onopen = () => {
-    updateConn('connected', 'Connected');
-    startNewGame();
-    setTimeout(() => document.getElementById('loader').classList.add('hidden'), 600);
+    // Don't start game yet — wait for auth_ok and session token first
+    updateConn('connecting', 'Authenticating…');
   };
 
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
+    if(msg.type === 'auth_ok') {
+      sessionToken = msg.session_token;
+      updateConn('connected', 'Connected');
+      startNewGame();
+      setTimeout(() => document.getElementById('loader').classList.add('hidden'), 600);
+      return;
+    }
     handleMessage(msg);
   };
 
   ws.onclose = () => {
+    sessionToken = null;
     updateConn('error', 'Disconnected — retrying…');
     showToast('Lost connection. Reconnecting…', 'error-t');
     setTimeout(connect, 3000);
@@ -588,7 +608,7 @@ function connect() {
 
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
+    ws.send(JSON.stringify({ ...obj, session_token: sessionToken }));
   } else {
     showToast('Not connected to server', 'error-t');
   }
