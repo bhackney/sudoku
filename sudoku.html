@@ -485,6 +485,24 @@
   <button class="btn" id="btn-bookmark" onclick="setBookmark()" disabled>🔖 Bookmark</button>
   <button class="btn" id="btn-restore" onclick="restoreBookmark()" disabled>⎌ Restore</button>
   <button class="btn" id="btn-reset" onclick="resetBoard()" disabled>↺ Reset</button>
+  <button class="btn" onclick="showHelp()">? Help</button>
+</div>
+
+<!-- Help modal -->
+<div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(12,12,15,.85);z-index:300;align-items:center;justify-content:center;backdrop-filter:blur(6px)" onclick="hideHelp(event)">
+  <div style="background:#14141a;border:1px solid #2a2a35;border-radius:12px;max-width:480px;width:90%;padding:32px;position:relative;animation:zoomIn .3s ease">
+    <button onclick="hideHelp()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#55556a;font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
+    <div style="font-family:'Unbounded',sans-serif;font-weight:700;font-size:1.1rem;color:#e8ff47;margin-bottom:20px;letter-spacing:.02em">SUDOKU — HELP</div>
+    <div style="font-size:.8rem;line-height:1.8;color:#c0c0d8;font-family:'DM Mono',monospace">
+      <p style="margin-bottom:14px">There are 2 major help modes (cheats) for this Sudoku game.</p>
+      <p style="margin-bottom:14px"><span style="color:#e8ff47;font-weight:500">Full Grid</span> highlighting makes seeing the eligible empty squares very easy for beginners. Click on any filled-in number, and all rows and columns that have that number are highlighted, leaving the other ones easy to spot.</p>
+      <p style="margin-bottom:14px"><span style="color:#ff4747;font-weight:500">Fill Notes</span> is a real cheat — it automatically fills in all valid candidates as notes.</p>
+      <p style="margin-bottom:14px"><span style="color:#e8e8f0;font-weight:500">Check</span> finds errors in the notes — candidates that conflict with already-placed numbers.</p>
+      <p style="margin-bottom:14px"><span style="color:#e8e8f0;font-weight:500">Hint</span> reveals a single number.</p>
+      <p style="margin-bottom:14px">When in <span style="color:#47ffe8;font-weight:500">Notes</span> or <span style="color:#47ffe8;font-weight:500">Full Grid</span> mode, holding <span style="color:#e8ff47;font-weight:500">Shift</span> while pressing a number enters a guess instead of a note, without having to switch modes.</p>
+      <p><span style="color:#e8e8f0;font-weight:500">Bookmark</span> saves your current position. You can then make up to 3 more moves and use <span style="color:#e8e8f0;font-weight:500">Restore</span> to return to it. Mistakes are restored; notes are not.</p>
+    </div>
+  </div>
 </div>
 
 <!-- Board -->
@@ -1094,6 +1112,17 @@ function showToast(msg, type='') {
   t.className = 'show ' + type;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.className = '', 3000);
+}
+
+function showHelp() {
+  document.getElementById('help-modal').style.display = 'flex';
+}
+
+function hideHelp(e) {
+  // Called directly (✕ button) or via backdrop click
+  if(!e || e.target === document.getElementById('help-modal')) {
+    document.getElementById('help-modal').style.display = 'none';
+  }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
