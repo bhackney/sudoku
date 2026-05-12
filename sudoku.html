@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUDOKU</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@300;400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0c0c0f;
+    --surface:   #14141a;
+    --border:    #2a2a35;
+    --accent:    #e8ff47;
+    --accent2:   #47ffe8;
+    --text:      #e8e8f0;
+    --muted:     #55556a;
+    --fixed:     #b0b0c8;
+    --correct:   #47ffe8;
+    --wrong:     #ff4747;
+    --hint-clr:  #e8ff47;
+    --cell-size: clamp(36px, 8vw, 58px);
+    --gap-thin:  2px;
+    --gap-thick: 6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+    overflow-x: hidden;
+  }
+
+  /* ── Grain overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 100; opacity: .35;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+    animation: fadeDown .6s ease both;
+  }
+  .logo {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 900;
+    font-size: clamp(2rem, 6vw, 3.2rem);
+    letter-spacing: -.02em;
+    color: var(--accent);
+    text-shadow: 0 0 40px rgba(232,255,71,.3);
+    line-height: 1;
+  }
+  .tagline {
+    font-size: .72rem;
+    letter-spacing: .25em;
+    color: var(--muted);
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+
+  /* ── Status bar ── */
+  .status-bar {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-bottom: 20px;
+    font-size: .75rem;
+    letter-spacing: .1em;
+    color: var(--muted);
+    animation: fadeDown .6s .1s ease both;
+  }
+  .status-item span {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 24px;
+    animation: fadeDown .6s .15s ease both;
+  }
+
+  /* Difficulty selector */
+  .diff-group {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .diff-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: .72rem;
+    letter-spacing: .1em;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all .2s;
+    text-transform: uppercase;
+  }
+  .diff-btn:hover { color: var(--text); background: rgba(255,255,255,.04); }
+  .diff-btn.active { background: var(--accent); color: #0c0c0f; font-weight: 500; }
+
+  /* Action buttons */
+  .btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: .72rem;
+    letter-spacing: .1em;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .2s;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: var(--accent); color: #0c0c0f; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ── Connection status ── */
+  .conn-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .68rem; letter-spacing: .1em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .conn-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    transition: background .4s;
+  }
+  .conn-dot.connected { background: var(--correct); box-shadow: 0 0 8px var(--correct); }
+  .conn-dot.connecting { background: var(--hint-clr); animation: pulse 1s infinite; }
+  .conn-dot.error { background: var(--wrong); }
+
+  /* ── Board wrapper ── */
+  .board-wrap {
+    animation: fadeUp .5s .2s ease both;
+  }
+
+  /* ── Sudoku grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(9, var(--cell-size));
+    background: var(--border);
+    border: 3px solid var(--accent);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 60px rgba(232,255,71,.12), 0 20px 60px rgba(0,0,0,.6);
+    gap: var(--gap-thin);
+  }
+
+  /* thick borders between 3×3 boxes */
+  .cell { position: relative; }
+  .cell:nth-child(3n+1):not(:nth-child(1)):not(:nth-child(10)):not(:nth-child(19)):not(:nth-child(28)):not(:nth-child(37)):not(:nth-child(46)):not(:nth-child(55)):not(:nth-child(64)):not(:nth-child(73)) {
+    border-left: calc(var(--gap-thick) - var(--gap-thin)) solid var(--accent);
+  }
+  .row-break { grid-column: 1 / -1; height: 0; }
+
+  .cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+    user-select: none;
+    position: relative;
+  }
+
+  /* Box borders via CSS grid areas approach – use outline trick */
+  .grid {
+    --thick: var(--gap-thick);
+  }
+
+  /* thick row separators */
+  .cell[data-row="3"], .cell[data-row="6"] {
+    border-top: 3px solid var(--accent);
+  }
+  /* thick col separators */
+  .cell[data-col="3"], .cell[data-col="6"] {
+    border-left: 3px solid var(--accent);
+  }
+
+  .cell:hover:not(.fixed) { background: #1e1e28; }
+
+  /* Selected cell */
+  .cell.selected { background: #2a2a10 !important; }
+  .cell.selected::after {
+    content: ''; position: absolute; inset: 0;
+    border: 2px solid var(--accent);
+    pointer-events: none;
+  }
+
+  /* Row / col / box peers — noticeably brighter than default */
+  .cell.peer { background: #1d1d2c; }
+
+  /* All cells sharing the same number as the selected cell */
+  .cell.same-num { background: #1c2a1a !important; }
+  .cell.same-num .cell-value { color: var(--accent) !important; text-shadow: 0 0 12px rgba(232,255,71,.5); }
+
+  /* Number-lines mode: rows & cols that already contain the selected number */
+  .cell.num-line { background: #221c2a !important; }
+  .cell.num-line.same-num { background: #1c2a1a !important; } /* same-num wins */
+
+  /* Also light up the selected cell's own value */
+  .cell.selected .cell-value { color: var(--accent) !important; text-shadow: 0 0 16px rgba(232,255,71,.6); }
+
+  .cell-value {
+    font-family: 'Unbounded', sans-serif;
+    font-size: clamp(14px, 3.5vw, 22px);
+    font-weight: 400;
+    color: var(--text);
+    transition: color .2s, transform .15s;
+    line-height: 1;
+  }
+
+  .cell.fixed .cell-value { color: var(--fixed); font-weight: 700; }
+  .cell.correct .cell-value { color: var(--correct); }
+  .cell.wrong .cell-value { color: var(--wrong); animation: shake .3s ease; }
+  .cell.hint-cell .cell-value { color: var(--hint-clr); }
+
+  .cell.pop .cell-value { animation: pop .25s ease; }
+
+  /* Notes grid */
+  .notes-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    width: 100%; height: 100%;
+    padding: 3px;
+  }
+  .note-num {
+    font-size: clamp(7px, 1.4vw, 10px);
+    font-weight: 500;
+    color: #8888aa;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+  .note-num.wrong-note { color: var(--wrong); text-shadow: 0 0 8px rgba(255,71,71,.5); }
+
+  /* ── Number pad ── */
+  .numpad {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 18px;
+    flex-wrap: wrap;
+    animation: fadeUp .5s .3s ease both;
+  }
+  .num-btn {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Unbounded', sans-serif;
+    font-size: clamp(14px, 3vw, 20px);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .num-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px); }
+  .num-btn:active { transform: translateY(0); }
+  .num-btn.erase { font-size: clamp(10px, 2vw, 14px); color: var(--muted); }
+  .num-btn.erase:hover { border-color: var(--wrong); color: var(--wrong); }
+  .num-btn.notes-active { border-color: var(--accent2); color: var(--accent2); }
+
+  /* Mode toggle */
+  .mode-toggle {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 12px;
+    animation: fadeUp .5s .35s ease both;
+  }
+  .mode-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: .68rem;
+    letter-spacing: .1em;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .2s;
+    text-transform: uppercase;
+  }
+  .mode-btn.active { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 32px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: .78rem;
+    letter-spacing: .08em;
+    padding: 12px 24px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: all .3s;
+    pointer-events: none;
+    z-index: 200;
+    white-space: nowrap;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  #toast.success { border-color: var(--correct); color: var(--correct); }
+  #toast.error-t { border-color: var(--wrong); color: var(--wrong); }
+  #toast.info { border-color: var(--hint-clr); color: var(--hint-clr); }
+
+  /* ── Victory overlay ── */
+  #victory {
+    position: fixed; inset: 0;
+    background: rgba(12,12,15,.9);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 300;
+    backdrop-filter: blur(6px);
+  }
+  #victory.show { display: flex; }
+  .victory-box {
+    text-align: center;
+    animation: zoomIn .4s ease;
+  }
+  .victory-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: clamp(2.5rem, 8vw, 5rem);
+    font-weight: 900;
+    color: var(--accent);
+    text-shadow: 0 0 80px rgba(232,255,71,.5);
+    margin-bottom: 12px;
+  }
+  .victory-sub {
+    color: var(--muted);
+    font-size: .85rem;
+    letter-spacing: .1em;
+    margin-bottom: 28px;
+  }
+
+  /* ── Loading screen ── */
+  #loader {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 400;
+    gap: 16px;
+    transition: opacity .5s;
+  }
+  #loader.hidden { opacity: 0; pointer-events: none; }
+  .loader-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--accent);
+  }
+  .loader-bar {
+    width: 160px; height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .loader-bar-inner {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    animation: loadBar 1.5s ease forwards;
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeDown { from { opacity:0; transform:translateY(-16px) } to { opacity:1; transform:none } }
+  @keyframes fadeUp   { from { opacity:0; transform:translateY(16px) }  to { opacity:1; transform:none } }
+  @keyframes zoomIn   { from { opacity:0; transform:scale(.8) }          to { opacity:1; transform:scale(1) } }
+  @keyframes shake {
+    0%,100%{ transform:translateX(0) }
+    25%    { transform:translateX(-4px) }
+    75%    { transform:translateX(4px) }
+  }
+  @keyframes pop {
+    0%  { transform:scale(1) }
+    50% { transform:scale(1.3) }
+    100%{ transform:scale(1) }
+  }
+  @keyframes pulse {
+    0%,100%{ opacity:1 } 50%{ opacity:.3 }
+  }
+  @keyframes loadBar {
+    0% { width:0% } 60% { width:80% } 100% { width:100% }
+  }
+
+  /* ── Timer ── */
+  .timer {
+    font-family: 'DM Mono', monospace;
+    font-size: .82rem;
+    letter-spacing: .1em;
+    color: var(--muted);
+    margin-top: 14px;
+    text-align: center;
+    animation: fadeUp .5s .4s ease both;
+  }
+</style>
+</head>
+<body>
+
+<!-- Loader -->
+<div id="loader">
+  <div class="loader-title">SUDOKU</div>
+  <div class="loader-bar"><div class="loader-bar-inner"></div></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Victory -->
+<div id="victory">
+  <div class="victory-box">
+    <div class="victory-title">SOLVED!</div>
+    <div class="victory-sub" id="victory-stats"></div>
+    <button class="btn primary" onclick="startNewGame()">▶ Play Again</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">SUDOKU</div>
+  <div class="tagline">WebSocket · Python Backend · Classic Logic</div>
+</header>
+
+<div class="conn-badge">
+  <div class="conn-dot connecting" id="conn-dot"></div>
+  <span id="conn-text">Connecting…</span>
+</div>
+
+<div class="status-bar">
+  <div class="status-item">MISTAKES <span id="stat-mistakes">0</span></div>
+  <div class="status-item">HINTS <span id="stat-hints">0</span></div>
+  <div class="status-item">DIFF <span id="stat-diff">—</span></div>
+</div>
+
+<div class="controls">
+  <div class="diff-group">
+    <button class="diff-btn" data-diff="easy" onclick="setDiff('easy')">Easy</button>
+    <button class="diff-btn active" data-diff="medium" onclick="setDiff('medium')">Medium</button>
+    <button class="diff-btn" data-diff="hard" onclick="setDiff('hard')">Hard</button>
+  </div>
+  <button class="btn primary" onclick="startNewGame()">▶ New Game</button>
+  <button class="btn" id="btn-hint" onclick="requestHint()" disabled>💡 Hint</button>
+  <button class="btn" id="btn-validate" onclick="validateBoard()" disabled>✓ Check</button>
+  <button class="btn" id="btn-cheat" onclick="cheatSolve()" disabled style="border-color:#ff4747;color:#ff4747">☠ Fill Notes</button>
+  <button class="btn" id="btn-save" onclick="saveGame()" disabled>💾 Save</button>
+  <button class="btn" onclick="document.getElementById('load-input').click()">📂 Load</button>
+  <input type="file" id="load-input" accept=".json" style="display:none" onchange="loadGame(event)">
+  <button class="btn" id="btn-undo" onclick="undoMove()" disabled>↩ Undo</button>
+  <button class="btn" id="btn-bookmark" onclick="setBookmark()" disabled>🔖 Bookmark</button>
+  <button class="btn" id="btn-restore" onclick="restoreBookmark()" disabled>⎌ Restore</button>
+  <button class="btn" id="btn-reset" onclick="resetBoard()" disabled>↺ Reset</button>
+</div>
+
+<!-- Board -->
+<div class="board-wrap">
+  <div class="grid" id="grid"></div>
+</div>
+
+<!-- Numpad -->
+<div class="numpad" id="numpad">
+  <button class="num-btn" onclick="inputNum(1)">1</button>
+  <button class="num-btn" onclick="inputNum(2)">2</button>
+  <button class="num-btn" onclick="inputNum(3)">3</button>
+  <button class="num-btn" onclick="inputNum(4)">4</button>
+  <button class="num-btn" onclick="inputNum(5)">5</button>
+  <button class="num-btn" onclick="inputNum(6)">6</button>
+  <button class="num-btn" onclick="inputNum(7)">7</button>
+  <button class="num-btn" onclick="inputNum(8)">8</button>
+  <button class="num-btn" onclick="inputNum(9)">9</button>
+  <button class="num-btn erase" onclick="inputNum(0)">✕</button>
+</div>
+
+<div class="mode-toggle">
+  <button class="mode-btn active" id="mode-normal" onclick="setMode('normal')">Normal</button>
+  <button class="mode-btn" id="mode-notes" onclick="setMode('notes')">Notes</button>
+  <button class="mode-btn" id="mode-numlines" onclick="setMode('numlines')">Full Grid</button>
+</div>
+
+<div class="timer" id="timer">—:——</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws = null;
+let puzzle = null;
+let current = Array.from({length:9}, ()=>Array(9).fill(0));
+let statuses = Array.from({length:9}, ()=>Array(9).fill('empty'));
+let notes = Array.from({length:9}, ()=>Array.from({length:9}, ()=>new Set()));
+let wrongNotes = new Set(); // keys: "r,c,n" for notes that don't match the solution
+let undoStack = []; // up to 3 snapshots of {current, notes, statuses}
+let bookmark = null; // single saved snapshot: {current, statuses, mistakes, seconds}
+let selectedCell = null;
+let difficulty = 'medium';
+let mode = 'normal';       // 'normal' | 'notes'
+let mistakes = 0;
+let hintCount = 0;
+let timerInterval = null;
+let seconds = 0;
+let gameActive = false;
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
+const WS_URL = 'ws://localhost:8765';
+
+function connect() {
+  updateConn('connecting', 'Connecting…');
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch(e) {
+    updateConn('error', 'Connection failed');
+    showToast('Cannot connect to server', 'error-t');
+    return;
+  }
+
+  ws.onopen = () => {
+    updateConn('connected', 'Connected');
+    startNewGame();
+    setTimeout(() => document.getElementById('loader').classList.add('hidden'), 600);
+  };
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    handleMessage(msg);
+  };
+
+  ws.onclose = () => {
+    updateConn('error', 'Disconnected — retrying…');
+    showToast('Lost connection. Reconnecting…', 'error-t');
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    updateConn('error', 'Connection error');
+  };
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  } else {
+    showToast('Not connected to server', 'error-t');
+  }
+}
+
+function updateConn(state, text) {
+  const dot = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-text');
+  dot.className = 'conn-dot ' + state;
+  label.textContent = text;
+}
+
+// ── Message handler ───────────────────────────────────────────────────────────
+function handleMessage(msg) {
+  switch(msg.type) {
+    case 'new_game':
+      puzzle = msg.puzzle;
+      current = puzzle.map(r => [...r]);
+      statuses = Array.from({length:9}, (_,r) =>
+        Array.from({length:9}, (_,c) => puzzle[r][c] !== 0 ? 'fixed' : 'empty'));
+      notes = Array.from({length:9}, ()=>Array.from({length:9}, ()=>new Set()));
+      wrongNotes = new Set();
+      mistakes = 0; hintCount = 0;
+      gameActive = true;
+      selectedCell = null;
+      clearUndo();
+      bookmark = null;
+      updateStats();
+      startTimer();
+      renderGrid();
+      enableButtons(true);
+      document.getElementById('stat-diff').textContent = msg.difficulty.toUpperCase();
+      break;
+
+    case 'update':
+      current[msg.row][msg.col] = msg.value;
+      statuses = msg.statuses;
+      mistakes = msg.mistakes;
+      // Auto-clear notes for this number across row/col/box if placement is correct
+      if(msg.statuses[msg.row][msg.col] === 'correct') {
+        clearRelatedNotes(msg.row, msg.col, msg.value);
+      }
+      wrongNotes = new Set(); // board changed — stale conflict highlights no longer valid
+      updateStats();
+      renderGrid();
+      if(msg.complete) onComplete();
+      break;
+
+    case 'hint':
+      if(msg.hint) {
+        const {row,col,value} = msg.hint;
+        current[row][col] = value;
+        statuses = msg.statuses;
+        hintCount = msg.hint_count;
+        notes[row][col] = new Set();
+        clearRelatedNotes(row, col, value);
+        updateStats();
+        renderGrid();
+        // Flash hint cell
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        if(cell) { cell.classList.add('hint-cell'); setTimeout(()=>cell.classList.remove('hint-cell'), 2000); }
+        if(msg.complete) onComplete();
+      } else {
+        showToast('Board already complete!', 'info');
+      }
+      break;
+
+    case 'reset':
+      puzzle = msg.puzzle;
+      current = puzzle.map(r=>[...r]);
+      statuses = Array.from({length:9}, (_,r) =>
+        Array.from({length:9}, (_,c) => puzzle[r][c] !== 0 ? 'fixed' : 'empty'));
+      notes = Array.from({length:9}, ()=>Array.from({length:9}, ()=>new Set()));
+      wrongNotes = new Set();
+      mistakes = 0;
+      clearUndo();
+      bookmark = null;
+      updateStats();
+      startTimer();
+      renderGrid();
+      showToast('Board reset', 'info');
+      break;
+
+    case 'cheat':
+      for(let r=0; r<9; r++)
+        for(let c=0; c<9; c++)
+          if(current[r][c] === 0)
+            notes[r][c] = new Set(msg.notes[r][c]);
+      wrongNotes = new Set();
+      renderGrid();
+      showToast('All valid candidates filled in', 'info');
+      break;
+
+    case 'saved_state': {
+      const saveData = {
+        puzzle:     msg.puzzle,
+        solution:   msg.solution,
+        current:    msg.current,
+        difficulty: msg.difficulty,
+        mistakes:   msg.mistakes,
+        hint_count: msg.hint_count,
+        notes_flat: msg.notes_flat,
+        saved_at:   new Date().toISOString(),
+      };
+      const blob = new Blob([JSON.stringify(saveData, null, 2)], {type:'application/json'});
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `sudoku-${msg.difficulty}-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Game saved!', 'success');
+      break;
+    }
+
+    case 'loaded_game': {
+      // Restore puzzle from 81-char strings
+      const fromLine = s => Array.from({length:9}, (_,r) =>
+        Array.from({length:9}, (_,c) => parseInt(s[r*9+c])));
+      puzzle   = fromLine(msg.puzzle);
+      current  = fromLine(msg.current);
+      statuses = msg.statuses;
+      difficulty = msg.difficulty;
+      mistakes   = msg.mistakes;
+      hintCount  = msg.hint_count;
+      notes      = msg.notes_flat.length === 81
+        ? flatToNotes(msg.notes_flat)
+        : Array.from({length:9}, ()=>Array.from({length:9}, ()=>new Set()));
+      wrongNotes = new Set();
+      gameActive = true;
+      selectedCell = null;
+      clearUndo();
+      updateStats();
+      startTimer();
+      renderGrid();
+      enableButtons(true);
+      document.getElementById('stat-diff').textContent = difficulty.toUpperCase();
+      showToast('Game loaded!', 'success');
+      break;
+    }
+
+    case 'error':
+      showToast(msg.message, 'error-t');
+      break;
+  }
+}
+
+// ── Grid render ───────────────────────────────────────────────────────────────
+function renderGrid() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+
+  for(let r = 0; r < 9; r++) {
+    for(let c = 0; c < 9; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+
+      const st = statuses[r][c];
+      cell.classList.add(st);
+
+      // Selection highlighting
+      if(selectedCell) {
+        const [sr,sc] = selectedCell;
+        const selectedVal = current[sr][sc];
+
+        if(r===sr && c===sc) {
+          cell.classList.add('selected');
+        } else {
+          // Peer: same row, col, or 3×3 box
+          if(r===sr || c===sc ||
+            (Math.floor(r/3)===Math.floor(sr/3) && Math.floor(c/3)===Math.floor(sc/3)))
+            cell.classList.add('peer');
+
+          // Same number: highlight all cells across the whole board
+          if(selectedVal !== 0 && current[r][c] === selectedVal)
+            cell.classList.add('same-num');
+
+          // Num-lines mode: dim every row and col that already contains the selected number
+          if(mode === 'numlines' && selectedVal !== 0) {
+            // collect which rows and cols contain this number
+            let rowsWithNum = new Set(), colsWithNum = new Set();
+            for(let i=0; i<9; i++) {
+              for(let j=0; j<9; j++) {
+                if(current[i][j] === selectedVal) {
+                  rowsWithNum.add(i);
+                  colsWithNum.add(j);
+                }
+              }
+            }
+            if(rowsWithNum.has(r) || colsWithNum.has(c))
+              cell.classList.add('num-line');
+          }
+        }
+      }
+
+      const val = current[r][c];
+
+      if(val !== 0) {
+        const span = document.createElement('div');
+        span.className = 'cell-value';
+        span.textContent = val;
+        cell.appendChild(span);
+      } else {
+        // Show notes if any
+        const cellNotes = notes[r][c];
+        if(cellNotes.size > 0) {
+          const ng = document.createElement('div');
+          ng.className = 'notes-grid';
+          for(let n=1; n<=9; n++) {
+            const nd = document.createElement('div');
+            nd.className = 'note-num';
+            if(cellNotes.has(n)) {
+              nd.textContent = n;
+              if(wrongNotes.has(`${r},${c},${n}`)) nd.classList.add('wrong-note');
+            }
+            ng.appendChild(nd);
+          }
+          cell.appendChild(ng);
+        }
+      }
+
+      cell.addEventListener('click', () => selectCell(r,c));
+      grid.appendChild(cell);
+    }
+  }
+}
+
+function selectCell(r, c) {
+  if(!gameActive) return;
+  selectedCell = [r, c];
+  renderGrid();
+}
+
+// ── Undo ──────────────────────────────────────────────────────────────────────
+function pushUndo() {
+  undoStack.push({
+    current:  current.map(r => [...r]),
+    notes:    notes.map(r => r.map(s => new Set(s))),
+    statuses: statuses.map(r => [...r]),
+  });
+  if(undoStack.length > 3) undoStack.shift();
+  document.getElementById('btn-undo').disabled = false;
+}
+
+function undoMove() {
+  if(!undoStack.length) return;
+  const snap = undoStack.pop();
+  current  = snap.current;
+  notes    = snap.notes;
+  statuses = snap.statuses;
+  wrongNotes = new Set();
+  updateStats();
+  renderGrid();
+  document.getElementById('btn-undo').disabled = undoStack.length === 0;
+}
+
+function clearUndo() {
+  undoStack = [];
+  document.getElementById('btn-undo').disabled = true;
+}
+
+// ── Bookmark ──────────────────────────────────────────────────────────────────
+function setBookmark() {
+  bookmark = {
+    current:  current.map(r => [...r]),
+    statuses: statuses.map(r => [...r]),
+    mistakes: mistakes,
+    seconds:  seconds,
+  };
+  document.getElementById('btn-restore').disabled = false;
+  showToast('Bookmark set', 'info');
+}
+
+function restoreBookmark() {
+  if(!bookmark) return;
+  current  = bookmark.current.map(r => [...r]);
+  statuses = bookmark.statuses.map(r => [...r]);
+  mistakes = bookmark.mistakes;
+  seconds  = bookmark.seconds;
+  // Notes are intentionally not restored per spec
+  notes     = Array.from({length:9}, ()=>Array.from({length:9}, ()=>new Set()));
+  wrongNotes = new Set();
+  clearUndo();
+  updateStats();
+  renderGrid();
+  showToast('Restored to bookmark', 'info');
+}
+
+// ── Auto-clear notes ──────────────────────────────────────────────────────────
+// After placing number `n` correctly at (row,col), erase that candidate from
+// every note set in the same row, column, and 3×3 box.
+function clearRelatedNotes(row, col, n) {
+  if(n === 0) return;
+  const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
+  for(let i=0; i<9; i++) {
+    notes[row][i].delete(n);          // same row
+    notes[i][col].delete(n);          // same col
+  }
+  for(let r=br; r<br+3; r++)
+    for(let c=bc; c<bc+3; c++)
+      notes[r][c].delete(n);          // same box
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function inputNum(n, forceNormal = false) {
+  if(!selectedCell || !gameActive) return;
+  const [r, c] = selectedCell;
+  if(statuses[r][c] === 'fixed') return;
+
+  const notesMode = !forceNormal && (mode === 'notes' || mode === 'numlines');
+
+  if(notesMode && n !== 0) {
+    pushUndo();
+    if(notes[r][c].has(n)) notes[r][c].delete(n);
+    else notes[r][c].add(n);
+    renderGrid();
+    return;
+  }
+
+  // Normal mode
+  pushUndo();
+  notes[r][c] = new Set();  // clear notes on number entry
+  send({ type: 'place_number', row: r, col: c, value: n });
+
+  // Optimistic render
+  current[r][c] = n;
+  renderGrid();
+
+  // Pop animation
+  const cell = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
+  if(cell && n !== 0) { cell.classList.add('pop'); setTimeout(()=>cell.classList.remove('pop'), 250); }
+}
+
+// Keyboard input
+document.addEventListener('keydown', e => {
+  if(!selectedCell) return;
+  const [r, c] = selectedCell;
+  const shift = e.shiftKey;
+
+  // Use e.code so Shift+digit still registers as the digit
+  if(e.code >= 'Digit1' && e.code <= 'Digit9') { inputNum(parseInt(e.code[5]), shift); return; }
+  if(e.code === 'Digit0' || e.key === 'Backspace' || e.key === 'Delete') { inputNum(0); return; }
+
+  // Arrow navigation
+  const moves = { ArrowUp:[-1,0], ArrowDown:[1,0], ArrowLeft:[0,-1], ArrowRight:[0,1] };
+  if(moves[e.key]) {
+    e.preventDefault();
+    const [dr,dc] = moves[e.key];
+    selectedCell = [Math.max(0,Math.min(8,r+dr)), Math.max(0,Math.min(8,c+dc))];
+    renderGrid();
+  }
+});
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function startNewGame() {
+  document.getElementById('victory').classList.remove('show');
+  send({ type: 'new_game', difficulty });
+}
+
+function requestHint() { send({ type: 'hint' }); }
+function validateBoard() {
+  // Check notes purely against the visible board state — no solution needed.
+  // A note is "obviously wrong" if that number already appears in the same
+  // row, column, or 3×3 box in the current grid.
+  wrongNotes = new Set();
+  let flagged = 0;
+  for(let r=0; r<9; r++) {
+    for(let c=0; c<9; c++) {
+      if(current[r][c] !== 0 || notes[r][c].size === 0) continue;
+      const br = Math.floor(r/3)*3, bc = Math.floor(c/3)*3;
+      notes[r][c].forEach(n => {
+        // Check row
+        for(let i=0; i<9; i++) if(current[r][i] === n) { wrongNotes.add(`${r},${c},${n}`); return; }
+        // Check col
+        for(let i=0; i<9; i++) if(current[i][c] === n) { wrongNotes.add(`${r},${c},${n}`); return; }
+        // Check box
+        for(let dr=0; dr<3; dr++) for(let dc=0; dc<3; dc++)
+          if(current[br+dr][bc+dc] === n) { wrongNotes.add(`${r},${c},${n}`); return; }
+      });
+    }
+  }
+  flagged = wrongNotes.size;
+  renderGrid();
+  if(flagged === 0) showToast('No conflicting notes found.', 'success');
+  else showToast(`${flagged} conflicting note${flagged > 1 ? 's' : ''} highlighted.`, 'error-t');
+}
+function resetBoard() { send({ type: 'reset' }); }
+function cheatSolve() {
+  if(confirm('Fill all valid candidates into the notes?')) send({ type: 'cheat' });
+}
+
+// ── Save / Load ───────────────────────────────────────────────────────────────
+function boardToLine(board) {
+  return board.flat().join('');
+}
+
+function notesToFlat(notesGrid) {
+  // 81 tokens: "-" filled cell, "." empty no notes, "135" = candidates
+  return notesGrid.flat().map((s, i) => {
+    const r = Math.floor(i/9), c = i%9;
+    if(current[r][c] !== 0) return '-';
+    return s.size > 0 ? [...s].sort().join('') : '.';
+  });
+}
+
+function flatToNotes(tokens) {
+  const grid = Array.from({length:9}, ()=>Array.from({length:9}, ()=>new Set()));
+  tokens.forEach((tok, i) => {
+    const r = Math.floor(i/9), c = i%9;
+    if(tok !== '-' && tok !== '.') {
+      for(const ch of tok) grid[r][c].add(parseInt(ch));
+    }
+  });
+  return grid;
+}
+
+function saveGame() {
+  const flat = notesToFlat(notes);
+  send({ type: 'save_game', notes_flat: flat });
+}
+
+function loadGame(event) {
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      // Validate required fields
+      if(!data.puzzle || !data.current || data.puzzle.length !== 81 || data.current.length !== 81)
+        throw new Error('Missing or invalid fields');
+      send({
+        type:       'load_game',
+        puzzle:     data.puzzle,
+        current:    data.current,
+        difficulty: data.difficulty  || 'medium',
+        mistakes:   data.mistakes    || 0,
+        hint_count: data.hint_count  || 0,
+        notes_flat: data.notes_flat  || [],
+      });
+    } catch(err) {
+      showToast('Invalid save file: ' + err.message, 'error-t');
+    }
+  };
+  reader.readAsText(file);
+  // Reset input so the same file can be reloaded
+  event.target.value = '';
+}
+
+function setDiff(d) {
+  difficulty = d;
+  document.querySelectorAll('.diff-btn').forEach(b => b.classList.toggle('active', b.dataset.diff===d));
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('mode-normal').classList.toggle('active', m==='normal');
+  document.getElementById('mode-notes').classList.toggle('active', m==='notes');
+  document.getElementById('mode-numlines').classList.toggle('active', m==='numlines');
+  document.querySelectorAll('.num-btn').forEach(b => b.classList.toggle('notes-active', m==='notes'));
+  renderGrid();
+}
+
+function enableButtons(on) {
+  ['btn-hint','btn-validate','btn-cheat','btn-save','btn-reset','btn-bookmark'].forEach(id => {
+    document.getElementById(id).disabled = !on;
+  });
+  if(!on) {
+    document.getElementById('btn-undo').disabled = true;
+    document.getElementById('btn-restore').disabled = true;
+  }
+}
+
+// ── Timer ─────────────────────────────────────────────────────────────────────
+function startTimer() {
+  clearInterval(timerInterval);
+  seconds = 0;
+  updateTimerDisplay();
+  timerInterval = setInterval(() => { seconds++; updateTimerDisplay(); }, 1000);
+}
+
+function stopTimer() { clearInterval(timerInterval); }
+
+function updateTimerDisplay() {
+  const m = String(Math.floor(seconds/60)).padStart(2,'0');
+  const s = String(seconds%60).padStart(2,'0');
+  document.getElementById('timer').textContent = m + ':' + s;
+}
+
+// ── Complete ──────────────────────────────────────────────────────────────────
+function onComplete() {
+  stopTimer();
+  gameActive = false;
+  const m = String(Math.floor(seconds/60)).padStart(2,'0');
+  const s = String(seconds%60).padStart(2,'0');
+  document.getElementById('victory-stats').textContent =
+    `${m}:${s} · ${mistakes} mistake${mistakes!==1?'s':''} · ${hintCount} hint${hintCount!==1?'s':''}`;
+  setTimeout(() => document.getElementById('victory').classList.add('show'), 600);
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('stat-mistakes').textContent = mistakes;
+  document.getElementById('stat-hints').textContent = hintCount;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 3000);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>
