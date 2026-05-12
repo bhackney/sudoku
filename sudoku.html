@@ -855,9 +855,11 @@ function restoreBookmark() {
   // Notes are intentionally not restored per spec
   notes     = Array.from({length:9}, ()=>Array.from({length:9}, ()=>new Set()));
   wrongNotes = new Set();
+  bookmark = null;
   clearUndo();
   updateStats();
   renderGrid();
+  document.getElementById('btn-restore').disabled = true;
   showToast('Restored to bookmark', 'info');
 }
 
