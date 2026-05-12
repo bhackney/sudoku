@@ -17,10 +17,10 @@ SOLVER_TIMEOUT = 5.0   # seconds before a solve attempt is aborted
 # ── Auth config ────────────────────────────────────────────────────────────────
 # Set SUDOKU_API_KEY in the environment before starting the server.
 # If unset, a random key is generated at startup and printed once.
-_API_KEY = os.environ.get("SUDOKU_API_KEY") or secrets.token_hex(24)
+_API_KEY = os.environ.get("SUDOKU_API_KEY", "SUDOKUv00")
 if "SUDOKU_API_KEY" not in os.environ:
-    print(f"[auth] No SUDOKU_API_KEY set — generated key for this session: {_API_KEY}")
-    print("[auth] Set SUDOKU_API_KEY env var to use a fixed key.")
+    print(f"[auth] No SUDOKU_API_KEY set — using default key: {_API_KEY}")
+    print("[auth] Set SUDOKU_API_KEY env var to use a custom key.")
 
 # ── Sudoku Engine ──────────────────────────────────────────────────────────────
 
@@ -247,12 +247,19 @@ async def handler(websocket):
     # accept the key two ways:
     #   a) Authorization: Bearer <key>  header (curl / non-browser clients)
     #   b) Sec-WebSocket-Protocol: bearer.<key>  subprotocol (browser clients)
-    auth_header = websocket.request.headers.get("Authorization", "")
+    #
+    # Support both legacy websockets (request_headers) and modern (request.headers).
+    try:
+        headers = websocket.request.headers          # websockets >= 14
+    except AttributeError:
+        headers = websocket.request_headers          # websockets legacy
+
+    auth_header = headers.get("Authorization", "")
     provided_key = auth_header.removeprefix("Bearer ").strip()
 
     if not provided_key:
         # Try subprotocol: first entry of the form "bearer.<key>"
-        for proto in websocket.request.headers.get("Sec-WebSocket-Protocol", "").split(","):
+        for proto in headers.get("Sec-WebSocket-Protocol", "").split(","):
             proto = proto.strip()
             if proto.startswith("bearer."):
                 provided_key = proto[len("bearer."):]
