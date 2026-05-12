@@ -255,19 +255,36 @@ async def handler(websocket):
         headers = websocket.request_headers          # websockets legacy
 
     auth_header = headers.get("Authorization", "")
-    provided_key = auth_header.removeprefix("Bearer ").strip()
+    # str.removeprefix requires Python 3.9+; use lstrip-style fallback
+    provided_key = auth_header[len("Bearer "):].strip() if auth_header.startswith("Bearer ") else auth_header.strip()
 
+    matched_proto = None
     if not provided_key:
         # Try subprotocol: first entry of the form "bearer.<key>"
         for proto in headers.get("Sec-WebSocket-Protocol", "").split(","):
             proto = proto.strip()
             if proto.startswith("bearer."):
                 provided_key = proto[len("bearer."):]
+                matched_proto = proto
                 break
 
     if not secrets.compare_digest(provided_key, _API_KEY):
+        # Send an auth_fail message before closing so the client knows why
+        try:
+            await websocket.send(json.dumps({"type": "auth_fail", "message": "Invalid API key"}))
+        except Exception:
+            pass
         await websocket.close(1008, "Unauthorized")
         return
+
+    # If key came via subprotocol, accept that subprotocol so the browser
+    # doesn't immediately drop the connection due to protocol mismatch.
+    if matched_proto:
+        try:
+            # Legacy websockets exposes subprotocol as a writable attribute
+            websocket.subprotocol = matched_proto
+        except Exception:
+            pass
 
     # ── 2. Issue a per-connection session token ────────────────────────────────
     session_token = secrets.token_hex(32)

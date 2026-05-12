@@ -554,36 +554,40 @@ let gameActive = false;
 // ── WebSocket ──────────────────────────────────────────────────────────────────
 const WS_URL = 'ws://localhost:8765';
 
-// Set this to the value printed by the server on startup (or your SUDOKU_API_KEY).
+// Set this to match SUDOKU_API_KEY on the server (default: SUDOKUv00).
 const API_KEY = 'SUDOKUv00';
 
 let sessionToken = null;  // assigned when server sends auth_ok
+let authFailed = false;   // stop retrying if key is wrong
 
 function connect() {
+  if(authFailed) return;
   updateConn('connecting', 'Connecting…');
   try {
-    ws = new WebSocket(WS_URL, [], {
-      headers: { 'Authorization': `Bearer ${API_KEY}` }
-    });
+    // Pass API key as a WebSocket subprotocol — the only way browsers allow
+    // auth data in the handshake without a custom HTTP header.
+    ws = new WebSocket(WS_URL, [`bearer.${API_KEY}`]);
   } catch(e) {
-    // Browser WebSocket API doesn't support custom headers directly;
-    // pass key as a subprotocol instead (server reads first subprotocol).
-    try {
-      ws = new WebSocket(WS_URL, [`bearer.${API_KEY}`]);
-    } catch(e2) {
-      updateConn('error', 'Connection failed');
-      showToast('Cannot connect to server', 'error-t');
-      return;
-    }
+    updateConn('error', 'Connection failed');
+    showToast('Cannot connect to server', 'error-t');
+    return;
   }
 
   ws.onopen = () => {
-    // Don't start game yet — wait for auth_ok and session token first
     updateConn('connecting', 'Authenticating…');
   };
 
   ws.onmessage = e => {
-    const msg = JSON.parse(e.data);
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    if(msg.type === 'auth_fail') {
+      authFailed = true;
+      updateConn('error', 'Auth failed — check API key');
+      showToast('Authentication failed. Check API_KEY in the HTML.', 'error-t');
+      ws.close();
+      return;
+    }
     if(msg.type === 'auth_ok') {
       sessionToken = msg.session_token;
       updateConn('connected', 'Connected');
@@ -596,6 +600,7 @@ function connect() {
 
   ws.onclose = () => {
     sessionToken = null;
+    if(authFailed) return;
     updateConn('error', 'Disconnected — retrying…');
     showToast('Lost connection. Reconnecting…', 'error-t');
     setTimeout(connect, 3000);
